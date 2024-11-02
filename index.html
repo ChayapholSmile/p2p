@@ -1,21 +1,216 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>Friends</title>
-  <link rel="stylesheet" href="node_modules/highlight.js/styles/solarized-light.css" charset="utf-8">
-  <link rel="stylesheet" href="app/style/bundle.css" charset="utf-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Video Call with Multiple Users</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+    body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 20px;
+}
+
+h2 {
+    color: #333;
+    text-align: center;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#localVideos,
+#remoteVideos {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+video {
+    width: 100%;
+    max-width: 300px;
+    margin: 10px;
+    border: 2px solid #007BFF;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+button {
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 15px;
+    margin: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+select {
+    margin: 5px;
+    padding: 5px;
+    font-size: 16px;
+}
+
+p {
+    font-size: 18px;
+    text-align: center;
+    color: #555;
+}
+
+        video {
+            width: 100%;
+            max-width: 300px;
+            margin: 10px;
+            border: 1px solid black;
+        }
+    </style>
 </head>
 <body>
-  <audio src="static/startup.ogg" autoplay></audio>
-  <script>
-  if (typeof require !== 'function') {
-    // If we are in a web env
-    var script = document.createElement('script')
-    script.src = 'bundle.js'
-    document.currentScript.parentNode.insertBefore(script, document.currentScript)
-  } else {
-    // If we are in the electron env
-    var friends = require('./app/desktop.js')()
-  }
-  </script>
+    <h2>P2P Video Call with Multiple Users</h2>
+    <div>
+        <label for="cameraSelect">Select Camera:</label>
+        <select id="cameraSelect"></select>
+        <button id="startBtn">Start Camera</button>
+        <button id="callBtn">Call</button>
+        <button id="toggleCameraBtn">Toggle Camera</button>
+        <button id="toggleMicBtn">Toggle Microphone</button>
+    </div>
+    <div id="localVideos"></div>
+    <div id="remoteVideos"></div>
+
+    <script>
+        let localStream;
+        let peer;
+        let calls = {};
+        let cameraEnabled = true;
+        let micEnabled = true;
+        
+        // Function to get available cameras
+        async function getCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const select = document.getElementById('cameraSelect');
+                select.innerHTML = ''; // Clear existing options
+
+                videoDevices.forEach((device) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || 'Camera';
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error getting cameras:', error);
+                alert('ไม่สามารถตรวจพบกล้องได้: ' + error.message);
+            }
+        }
+
+        // Function to start the camera
+        async function startCamera(selectedCameraId) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined },
+                    audio: true
+                });
+                const localVideosDiv = document.getElementById('localVideos');
+                localVideosDiv.innerHTML = ''; // Clear previous videos
+                const localVideo = document.createElement('video');
+                localVideo.srcObject = localStream;
+                localVideo.autoplay = true;
+                localVideo.muted = true;
+                localVideosDiv.appendChild(localVideo);
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                alert('ไม่สามารถเปิดกล้องได้: ' + error.message);
+            }
+        }
+
+        // Initialize PeerJS
+        function initializePeer() {
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                console.log('Peer ID:', id);
+            });
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                call.on('stream', (remoteStream) => {
+                    const remoteVideo = document.createElement('video');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.autoplay = true;
+                    document.getElementById('remoteVideos').appendChild(remoteVideo);
+                });
+            });
+        }
+
+        // Make a call to a peer
+        function makeCall(peerId) {
+            const call = peer.call(peerId, localStream);
+            call.on('stream', (remoteStream) => {
+                const remoteVideo = document.createElement('video');
+                remoteVideo.srcObject = remoteStream;
+                remoteVideo.autoplay = true;
+                document.getElementById('remoteVideos').appendChild(remoteVideo);
+            });
+            calls[peerId] = call;
+        }
+
+        // Toggle Camera
+        function toggleCamera() {
+            cameraEnabled = !cameraEnabled;
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = cameraEnabled;
+            });
+            alert(cameraEnabled ? "กล้องเปิด" : "กล้องปิด");
+        }
+
+        // Toggle Microphone
+        function toggleMic() {
+            micEnabled = !micEnabled;
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = micEnabled;
+            });
+            alert(micEnabled ? "ไมค์เปิด" : "ไมค์ปิด");
+        }
+
+        // Start the camera on button click
+        document.getElementById('startBtn').addEventListener('click', () => {
+            const selectedCameraId = document.getElementById('cameraSelect').value;
+            if (selectedCameraId) {
+                startCamera(selectedCameraId);
+            } else {
+                alert('กรุณาเลือกกล้องก่อน');
+            }
+        });
+
+        // Call another peer when the button is clicked
+        document.getElementById('callBtn').addEventListener('click', () => {
+            const peerId = prompt("Enter Peer ID to call:");
+            if (peerId) {
+                makeCall(peerId);
+            }
+        });
+
+        // Toggle camera and microphone
+        document.getElementById('toggleCameraBtn').addEventListener('click', toggleCamera);
+        document.getElementById('toggleMicBtn').addEventListener('click', toggleMic);
+
+        // Start the application
+        getCameras(); // Call the function to get cameras
+        initializePeer(); // Call the function to initialize PeerJS
+    </script>
 </body>
 </html>
