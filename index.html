@@ -3,118 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Video Call</title>
+    <title>P2P Video Call with Multiple Users</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    color: #333;
-    margin: 0;
-    padding: 20px;
-}
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
 
-h1 {
-    text-align: center;
-    color: #4a4a4a;
-}
+        h2 {
+            color: #333;
+            text-align: center;
+        }
 
-#localVideos, #remoteVideos {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 20px;
-}
-
-video {
-    width: 300px;
-    height: 200px;
-    border: 2px solid #007bff;
-    border-radius: 10px;
-    margin: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#peerIdDisplay {
-    margin: 20px;
-    font-size: 18px;
-    font-weight: bold;
-    text-align: center;
-    color: #007bff;
-}
-
-button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    padding: 10px 15px;
-    font-size: 16px;
-    cursor: pointer;
-    margin: 5px;
-    transition: background-color 0.3s;
-}
-
-button:hover {
-    background-color: #0056b3;
-}
-
-label {
-    font-size: 16px;
-    margin-right: 10px;
-}
-
-select {
-    padding: 10px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-}
-
-#cameraSelect {
-    width: 200px;
-    margin-right: 10px;
-}
-        #localVideos, #remoteVideos {
+        .container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin: 20px;
+        }
+
+        #localVideos,
+        #remoteVideos {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 20px 0;
         }
 
         video {
-            width: 300px;
-            height: 200px;
-            border: 1px solid #000;
+            width: 100%;
+            max-width: 300px;
             margin: 10px;
+            border: 2px solid #007BFF;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        select {
+            margin: 5px;
+            padding: 5px;
+            font-size: 16px;
+        }
+
+        p {
+            font-size: 18px;
+            text-align: center;
+            color: #555;
         }
 
         #peerIdDisplay {
-            margin: 20px;
+            margin: 20px 0;
             font-size: 18px;
-            font-weight: bold;
+            text-align: center;
+            color: #333;
         }
     </style>
 </head>
 <body>
-    <h1>P2P Video Call Application</h1>
-
+    <h2>P2P Video Call with Multiple Users</h2>
     <div>
         <label for="cameraSelect">Select Camera:</label>
-        <select id="cameraSelect"></select>
+        <select id="cameraSelect">
+            <option value="">--SELECT--</option>
+        </select>
         <button id="startBtn">Start Camera</button>
+        <button id="callBtn">Call</button>
+        <button id="toggleCameraBtn">Toggle Camera</button>
+        <button id="toggleMicBtn">Toggle Microphone</button>
     </div>
-
-    <div id="peerIdDisplay">Your Peer ID: <span id="peerId"></span></div>
-
+    <div id="peerIdDisplay"></div>
     <div id="localVideos"></div>
     <div id="remoteVideos"></div>
 
-    <div>
-        <button id="callBtn">Call</button>
-        <button id="toggleCameraBtn">Toggle Camera</button>
-        <button id="toggleMicBtn">Toggle Mic</button>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.1/peerjs.min.js"></script>
     <script>
         let localStream;
         let peer;
@@ -122,39 +100,13 @@ select {
         let cameraEnabled = true;
         let micEnabled = true;
 
-        // Language strings
-        const messages = {
-            en: {
-                cameraError: "Cannot detect camera: ",
-                cameraAccessError: "Cannot access camera: ",
-                cameraOn: "Camera is ON",
-                cameraOff: "Camera is OFF",
-                micOn: "Microphone is ON",
-                micOff: "Microphone is OFF",
-                selectCamera: "Please select a camera first.",
-                enterPeerId: "Enter Peer ID to call:"
-            },
-            th: {
-                cameraError: "ไม่สามารถตรวจพบกล้อง: ",
-                cameraAccessError: "ไม่สามารถเปิดกล้องได้: ",
-                cameraOn: "กล้องเปิด",
-                cameraOff: "กล้องปิด",
-                micOn: "ไมค์เปิด",
-                micOff: "ไมค์ปิด",
-                selectCamera: "กรุณาเลือกกล้องก่อน",
-                enterPeerId: "กรุณากรอก Peer ID เพื่อโทร:"
-            }
-        };
-
-        let currentLanguage = 'en'; // Default language
-
         // Function to get available cameras
         async function getCameras() {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(device => device.kind === 'videoinput');
                 const select = document.getElementById('cameraSelect');
-                select.innerHTML = ''; // Clear existing options
+                select.innerHTML = '<option value="">--SELECT--</option>'; // Add default option
 
                 videoDevices.forEach((device) => {
                     const option = document.createElement('option');
@@ -162,14 +114,9 @@ select {
                     option.text = device.label || 'Camera';
                     select.appendChild(option);
                 });
-
-                // If no cameras are found
-                if (videoDevices.length === 0) {
-                    alert(messages[currentLanguage].cameraError + "No cameras found.");
-                }
             } catch (error) {
                 console.error('Error getting cameras:', error);
-                alert(messages[currentLanguage].cameraError + error.message);
+                alert('ไม่สามารถตรวจพบกล้องได้: ' + error.message);
             }
         }
 
@@ -189,7 +136,7 @@ select {
                 localVideosDiv.appendChild(localVideo);
             } catch (error) {
                 console.error('Error accessing camera:', error);
-                alert(messages[currentLanguage].cameraAccessError + error.message);
+                alert('ไม่สามารถเปิดกล้องได้: ' + error.message);
             }
         }
 
@@ -199,7 +146,7 @@ select {
 
             peer.on('open', (id) => {
                 console.log('Peer ID:', id);
-                document.getElementById('peerId').textContent = id; // Display Peer ID
+                document.getElementById('peerIdDisplay').innerText = `Your Peer ID: ${id}`; // Display Peer ID
             });
 
             peer.on('call', (call) => {
@@ -231,7 +178,7 @@ select {
             localStream.getVideoTracks().forEach(track => {
                 track.enabled = cameraEnabled;
             });
-            alert(cameraEnabled ? messages[currentLanguage].cameraOn : messages[currentLanguage].cameraOff);
+            alert(cameraEnabled ? "กล้องเปิด" : "กล้องปิด");
         }
 
         // Toggle Microphone
@@ -240,7 +187,7 @@ select {
             localStream.getAudioTracks().forEach(track => {
                 track.enabled = micEnabled;
             });
-            alert(micEnabled ? messages[currentLanguage].micOn : messages[currentLanguage].micOff);
+            alert(micEnabled ? "ไมค์เปิด" : "ไมค์ปิด");
         }
 
         // Start the camera on button click
@@ -249,13 +196,13 @@ select {
             if (selectedCameraId) {
                 startCamera(selectedCameraId);
             } else {
-                alert(messages[currentLanguage].selectCamera);
+                alert('กรุณาเลือกกล้องก่อน');
             }
         });
 
         // Call another peer when the button is clicked
         document.getElementById('callBtn').addEventListener('click', () => {
-            const peerId = prompt(messages[currentLanguage].enterPeerId);
+            const peerId = prompt("Enter Peer ID to call:");
             if (peerId) {
                 makeCall(peerId);
             }
@@ -268,12 +215,6 @@ select {
         // Start the application
         getCameras(); // Call the function to get cameras
         initializePeer(); // Call the function to initialize PeerJS
-
-        // Function to change language
-        function changeLanguage(lang) {
-            currentLanguage = lang;
-            // You can also update the UI elements here if needed
-        }
     </script>
 </body>
 </html>
