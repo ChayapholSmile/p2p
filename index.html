@@ -5,250 +5,198 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P Video Call</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background: linear-gradient(to bottom right, #e6f3ff, #f4f4f4);
-            margin: 0;
-            padding: 20px;
-            color: #333;
-        }
-        h2 {
-            text-align: center;
-            margin: 10px 0;
-        }
-        .container {
+        #localVideos, #remoteVideos {
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin: 20px;
         }
-        #welcomeMessage {
-            background-color: #007BFF;
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 18px;
-        }
-        #localVideos,
-        #remoteVideos {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            margin: 20px 0;
-        }
+
         video {
-            width: 100%;
-            max-width: 300px;
+            width: 300px;
+            height: 200px;
+            border: 1px solid #000;
             margin: 10px;
-            border: 2px solid #007BFF;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 15px;
-            margin: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        select {
-            margin: 5px;
-            padding: 5px;
-            font-size: 16px;
-        }
-        p {
-            font-size: 18px;
-            text-align: center;
-            color: #555;
         }
     </style>
 </head>
 <body>
-    <h2 id="title">P2P Video Call with Multiple Users</h2>
-    <div id="welcomeMessage">
-        Welcome! To join the call, you must be approved by the host.
-    </div>
+    <h1>P2P Video Call Application</h1>
+
     <div>
-        <label for="languageSelect">Select Language:</label>
-        <select id="languageSelect">
-            <option value="en">English</option>
-            <option value="th">ภาษาไทย</option>
-        </select>
-    </div>
-    <div>
-        <label for="cameraSelect" id="cameraLabel">Select Camera:</label>
+        <label for="cameraSelect">Select Camera:</label>
         <select id="cameraSelect"></select>
         <button id="startBtn">Start Camera</button>
-        <button id="callBtn">Call</button>
-        <button id="toggleCameraBtn">Toggle Camera</button>
-        <button id="toggleMicBtn">Toggle Microphone</button>
     </div>
+
     <div id="localVideos"></div>
     <div id="remoteVideos"></div>
-<script>
-let localStream;
-let peer;
-let calls = {};
-let cameraEnabled = true;
-let micEnabled = true;
 
-// Language strings
-const messages = {
-    en: {
-        cameraError: "Cannot detect camera: ",
-        cameraAccessError: "Cannot access camera: ",
-        cameraOn: "Camera is ON",
-        cameraOff: "Camera is OFF",
-        micOn: "Microphone is ON",
-        micOff: "Microphone is OFF",
-        selectCamera: "Please select a camera first.",
-        enterPeerId: "Enter Peer ID to call:"
-    },
-    th: {
-        cameraError: "ไม่สามารถตรวจพบกล้อง: ",
-        cameraAccessError: "ไม่สามารถเปิดกล้องได้: ",
-        cameraOn: "กล้องเปิด",
-        cameraOff: "กล้องปิด",
-        micOn: "ไมค์เปิด",
-        micOff: "ไมค์ปิด",
-        selectCamera: "กรุณาเลือกกล้องก่อน",
-        enterPeerId: "กรุณากรอก Peer ID เพื่อโทร:"
-    }
-};
+    <div>
+        <button id="callBtn">Call</button>
+        <button id="toggleCameraBtn">Toggle Camera</button>
+        <button id="toggleMicBtn">Toggle Mic</button>
+    </div>
 
-let currentLanguage = 'en'; // Default language
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.1/peerjs.min.js"></script>
+    <script>
+        let localStream;
+        let peer;
+        let calls = {};
+        let cameraEnabled = true;
+        let micEnabled = true;
 
-// Function to get available cameras
-async function getCameras() {
-    try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        const select = document.getElementById('cameraSelect');
-        select.innerHTML = ''; // Clear existing options
+        // Language strings
+        const messages = {
+            en: {
+                cameraError: "Cannot detect camera: ",
+                cameraAccessError: "Cannot access camera: ",
+                cameraOn: "Camera is ON",
+                cameraOff: "Camera is OFF",
+                micOn: "Microphone is ON",
+                micOff: "Microphone is OFF",
+                selectCamera: "Please select a camera first.",
+                enterPeerId: "Enter Peer ID to call:"
+            },
+            th: {
+                cameraError: "ไม่สามารถตรวจพบกล้อง: ",
+                cameraAccessError: "ไม่สามารถเปิดกล้องได้: ",
+                cameraOn: "กล้องเปิด",
+                cameraOff: "กล้องปิด",
+                micOn: "ไมค์เปิด",
+                micOff: "ไมค์ปิด",
+                selectCamera: "กรุณาเลือกกล้องก่อน",
+                enterPeerId: "กรุณากรอก Peer ID เพื่อโทร:"
+            }
+        };
 
-        videoDevices.forEach((device) => {
-            const option = document.createElement('option');
-            option.value = device.deviceId;
-            option.text = device.label || 'Camera';
-            select.appendChild(option);
+        let currentLanguage = 'en'; // Default language
+
+        // Function to get available cameras
+        async function getCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const select = document.getElementById('cameraSelect');
+                select.innerHTML = ''; // Clear existing options
+
+                videoDevices.forEach((device) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || 'Camera';
+                    select.appendChild(option);
+                });
+
+                // If no cameras are found
+                if (videoDevices.length === 0) {
+                    alert(messages[currentLanguage].cameraError + "No cameras found.");
+                }
+            } catch (error) {
+                console.error('Error getting cameras:', error);
+                alert(messages[currentLanguage].cameraError + error.message);
+            }
+        }
+
+        // Function to start the camera
+        async function startCamera(selectedCameraId) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined },
+                    audio: true
+                });
+                const localVideosDiv = document.getElementById('localVideos');
+                localVideosDiv.innerHTML = ''; // Clear previous videos
+                const localVideo = document.createElement('video');
+                localVideo.srcObject = localStream;
+                localVideo.autoplay = true;
+                localVideo.muted = true;
+                localVideosDiv.appendChild(localVideo);
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                alert(messages[currentLanguage].cameraAccessError + error.message);
+            }
+        }
+
+        // Initialize PeerJS
+        function initializePeer() {
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                console.log('Peer ID:', id);
+            });
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                call.on('stream', (remoteStream) => {
+                    const remoteVideo = document.createElement('video');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.autoplay = true;
+                    document.getElementById('remoteVideos').appendChild(remoteVideo);
+                });
+            });
+        }
+
+        // Make a call to a peer
+        function makeCall(peerId) {
+            const call = peer.call(peerId, localStream);
+            call.on('stream', (remoteStream) => {
+                const remoteVideo = document.createElement('video');
+                remoteVideo.srcObject = remoteStream;
+                remoteVideo.autoplay = true;
+                document.getElementById('remoteVideos').appendChild(remoteVideo);
+            });
+            calls[peerId] = call;
+        }
+
+        // Toggle Camera
+        function toggleCamera() {
+            cameraEnabled = !cameraEnabled;
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = cameraEnabled;
+            });
+            alert(cameraEnabled ? messages[currentLanguage].cameraOn : messages[currentLanguage].cameraOff);
+        }
+
+        // Toggle Microphone
+        function toggleMic() {
+            micEnabled = !micEnabled;
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = micEnabled;
+            });
+            alert(micEnabled ? messages[currentLanguage].micOn : messages[currentLanguage].micOff);
+        }
+
+        // Start the camera on button click
+        document.getElementById('startBtn').addEventListener('click', () => {
+            const selectedCameraId = document.getElementById('cameraSelect').value;
+            if (selectedCameraId) {
+                startCamera(selectedCameraId);
+            } else {
+                alert(messages[currentLanguage].selectCamera);
+            }
         });
-    } catch (error) {
-        console.error('Error getting cameras:', error);
-        alert(messages[currentLanguage].cameraError + error.message);
-    }
-}
 
-// Function to start the camera
-async function startCamera(selectedCameraId) {
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined },
-            audio: true
+        // Call another peer when the button is clicked
+        document.getElementById('callBtn').addEventListener('click', () => {
+            const peerId = prompt(messages[currentLanguage].enterPeerId);
+            if (peerId) {
+                makeCall(peerId);
+            }
         });
-        const localVideosDiv = document.getElementById('localVideos');
-        localVideosDiv.innerHTML = ''; // Clear previous videos
-        const localVideo = document.createElement('video');
-        localVideo.srcObject = localStream;
-        localVideo.autoplay = true;
-        localVideo.muted = true;
-        localVideosDiv.appendChild(localVideo);
-    } catch (error) {
-        console.error('Error accessing camera:', error);
-        alert(messages[currentLanguage].cameraAccessError + error.message);
-    }
-}
 
-// Initialize PeerJS
-function initializePeer() {
-    peer = new Peer();
+        // Toggle camera and microphone
+        document.getElementById('toggleCameraBtn').addEventListener('click', toggleCamera);
+        document.getElementById('toggleMicBtn').addEventListener('click', toggleMic);
 
-    peer.on('open', (id) => {
-        console.log('Peer ID:', id);
-    });
+        // Start the application
+        getCameras(); // Call the function to get cameras
+        initializePeer(); // Call the function to initialize PeerJS
 
-    peer.on('call', (call) => {
-        call.answer(localStream);
-        call.on('stream', (remoteStream) => {
-            const remoteVideo = document.createElement('video');
-            remoteVideo.srcObject = remoteStream;
-            remoteVideo.autoplay = true;
-            document.getElementById('remoteVideos').appendChild(remoteVideo);
-        });
-    });
-}
-
-// Make a call to a peer
-function makeCall(peerId) {
-    const call = peer.call(peerId, localStream);
-    call.on('stream', (remoteStream) => {
-        const remoteVideo = document.createElement('video');
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.autoplay = true;
-        document.getElementById('remoteVideos').appendChild(remoteVideo);
-    });
-    calls[peerId] = call;
-}
-
-// Toggle Camera
-function toggleCamera() {
-    cameraEnabled = !cameraEnabled;
-    localStream.getVideoTracks().forEach(track => {
-        track.enabled = cameraEnabled;
-    });
-    alert(cameraEnabled ? messages[currentLanguage].cameraOn : messages[currentLanguage].cameraOff);
-}
-
-// Toggle Microphone
-function toggleMic() {
-    micEnabled = !micEnabled;
-    localStream.getAudioTracks().forEach(track => {
-        track.enabled = micEnabled;
-    });
-    alert(micEnabled ? messages[currentLanguage].micOn : messages[currentLanguage].micOff);
-}
-
-// Start the camera on button click
-document.getElementById('startBtn').addEventListener('click', () => {
-    const selectedCameraId = document.getElementById('cameraSelect').value;
-    if (selectedCameraId) {
-        startCamera(selectedCameraId);
-    } else {
-        alert(messages[currentLanguage].selectCamera);
-    }
-});
-
-// Call another peer when the button is clicked
-document.getElementById('callBtn').addEventListener('click', () => {
-    const peerId = prompt(messages[currentLanguage].enterPeerId);
-    if (peerId) {
-        makeCall(peerId);
-    }
-});
-
-// Toggle camera and microphone
-document.getElementById('toggleCameraBtn').addEventListener('click', toggleCamera);
-document.getElementById('toggleMicBtn').addEventListener('click', toggleMic);
-
-// Start the application
-getCameras(); // Call the function to get cameras
-initializePeer(); // Call the function to initialize PeerJS
-
-// Function to change language
-function changeLanguage(lang) {
-    currentLanguage = lang;
-    // You can also update the UI elements here if needed
-}
-
-// Example: Call changeLanguage('th') to switch to Thai
-// changeLanguage('en') to switch back to English
-</script>
+        // Function to change language
+        function changeLanguage(lang) {
+            currentLanguage = lang;
+            // You can also update the UI elements here if needed
+        }
+    </script>
 </body>
 </html>
