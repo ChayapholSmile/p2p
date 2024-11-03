@@ -3,212 +3,252 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Video Call with Multiple Users</title>
+    <title>Group Video Chat - Google Meet Style</title>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 20px;
-        }
-
-        h2 {
-            color: #333;
-            text-align: center;
-        }
-
-        .container {
             display: flex;
             flex-direction: column;
             align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
         }
-
-        #localVideos,
-        #remoteVideos {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            margin: 20px 0;
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            width: 100%;
+            max-width: 1200px;
+            margin-top: 20px;
         }
-
         video {
             width: 100%;
-            max-width: 300px;
-            margin: 10px;
-            border: 2px solid #007BFF;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            border: none;
         }
-
+        #controls {
+            margin-top: 20px;
+        }
         button {
-            background-color: #007BFF;
-            color: white;
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #007bff;
+            color: #fff;
             border: none;
             border-radius: 5px;
-            padding: 10px 15px;
-            margin: 5px;
             cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
         }
-
         button:hover {
             background-color: #0056b3;
         }
-
-        select {
-            margin: 5px;
-            padding: 5px;
-            font-size: 16px;
+        .icon {
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            margin: 0 5px;
         }
-
-        #peerIdDisplay {
-            margin: 20px 0;
-            font-size: 18px;
+        #chat {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            right: 20px;
+            width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+            z-index: 10;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .chat-header {
+            background-color: #007bff;
+            color: white;
+            padding: 5px;
             text-align: center;
-            color: #333;
+            border-radius: 5px 5px 0 0;
+        }
+        .chat-messages {
+            padding: 10px;
+        }
+        .chat-input {
+            display: flex;
+            padding: 5px;
+        }
+        .chat-input input {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 5px;
+        }
+        .speaking {
+            border: 2px solid green;
         }
     </style>
 </head>
 <body>
-    <h2>P2P Video Call with Multiple Users</h2>
-    <div>
-        <label for="cameraSelect">Select Camera:</label>
-        <select id="cameraSelect">
-            <option value="">--SELECT--</option>
+    <h1>Group Video Chat</h1>
+    <div id="peer-id">Connecting...</div>
+
+    <div id="role-selection">
+        <label for="role">Are you the host? </label>
+        <select id="role">
+            <option value="host">Yes</option>
+            <option value="participant">No</option>
         </select>
-        <button id="startBtn">Start Camera</button>
-        <button id="callBtn">Call</button>
-        <button id="toggleCameraBtn">Toggle Camera</button>
-        <button id="toggleMicBtn">Toggle Microphone</button>
+        <button onclick="initPeer()">Start</button>
     </div>
-    <div id="peerIdDisplay"></div>
-    <div id="localVideos"></div>
-    <div id="remoteVideos"></div>
+
+    <div id="connection-form" style="display: none;">
+        <label for="peer-input">Enter Peer ID to connect (format: XXX-XXXX-XXX): </label>
+        <input type="text" id="peer-input" />
+        <button onclick="joinCall()">Connect</button>
+    </div>
+
+    <div class="video-grid" id="videoGrid">
+        <video id="localVideo" autoplay muted></video>
+    </div>
+    <div id="controls">
+        <button onclick="toggleAudio()">🔇</button>
+        <button onclick="toggleVideo()">📷</button>
+        <button onclick="shareScreen()">🖥️</button>
+        <button onclick="openChat()">💬</button>
+        <button onclick="leaveCall()">📞</button>
+    </div>
+
+    <div id="chat">
+        <div class="chat-header">Chat <button onclick="closeChat()">✖</button></div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input">
+            <input type="text" id="chatInput" placeholder="Type a message..." onkeydown="sendMessage(event)">
+        </div>
+    </div>
 
     <script>
-        let localStream;
         let peer;
-        let calls = {};
-        let cameraEnabled = true;
-        let micEnabled = true;
+        const videoGrid = document.getElementById('videoGrid');
+        let localStream;
+        let isMuted = false;
+        let isCameraOff = false;
+        let isHost = false;
 
-        // Function to get available cameras
-        async function getCameras() {
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                const select = document.getElementById('cameraSelect');
-                select.innerHTML = '<option value="">--SELECT--</option>'; // Add default option
-
-                videoDevices.forEach((device) => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || 'Camera';
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Error getting cameras:', error);
-                alert('ไม่สามารถตรวจพบกล้องได้: ' + error.message);
-            }
-        }
-
-        // Function to start the camera
-        async function startCamera(selectedCameraId) {
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined },
-                    audio: true
-                });
-                const localVideosDiv = document.getElementById('localVideos');
-                localVideosDiv.innerHTML = ''; // Clear previous videos
-                const localVideo = document.createElement('video');
-                localVideo.srcObject = localStream;
-                localVideo.autoplay = true;
-                localVideo.muted = true;
-                localVideosDiv.appendChild(localVideo);
-            } catch (error) {
-                console.error('Error accessing camera:', error);
-                alert('ไม่สามารถเปิดกล้องได้: ' + error.message);
-            }
-        }
-
-        // Initialize PeerJS
-        function initializePeer() {
+        function initPeer() {
+            isHost = document.getElementById('role').value === 'host';
             peer = new Peer();
 
-            peer.on('open', (id) => {
-                console.log('Peer ID:', id);
-                document.getElementById('peerIdDisplay').innerText = `Your Peer ID: ${id}`; // Display Peer ID
+            peer.on('open', id => {
+                document.getElementById('peer-id').textContent = 'Your ID: ' + formatPeerID(id);
+                console.log('My peer ID is: ' + formatPeerID(id));
+                document.getElementById('connection-form').style.display = 'block';
+                document.getElementById('role-selection').style.display = 'none';
             });
 
-            peer.on('call', (call) => {
-                call.answer(localStream);
-                call.on('stream', (remoteStream) => {
-                    const remoteVideo = document.createElement('video');
-                    remoteVideo.srcObject = remoteStream;
-                    remoteVideo.autoplay = true;
-                    document.getElementById('remoteVideos').appendChild(remoteVideo);
+            peer.on('call', call => {
+                getUserMedia().then(stream => {
+                    call.answer(stream);
+                    call.on('stream', remoteStream => {
+                        addVideoStream(remoteStream, call.peer);
+                    });
                 });
             });
         }
 
-        // Make a call to a peer
-        function makeCall(peerId) {
-            const call = peer.call(peerId, localStream);
-            call.on('stream', (remoteStream) => {
-                const remoteVideo = document.createElement('video');
-                remoteVideo.srcObject = remoteStream;
-                remoteVideo.autoplay = true;
-                document.getElementById('remoteVideos').appendChild(remoteVideo);
-            });
-            calls[peerId] = call;
+        function getUserMedia() {
+            return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    if (!localStream) {
+                        localStream = stream;
+                        addVideoStream(stream, 'local');
+                    }
+                    return stream;
+                });
         }
 
-        // Toggle Camera
-        function toggleCamera() {
-            cameraEnabled = !cameraEnabled;
-            localStream.getVideoTracks().forEach(track => {
-                track.enabled = cameraEnabled;
-            });
-            alert(cameraEnabled ? "กล้องเปิด" : "กล้องปิด");
-        }
-
-        // Toggle Microphone
-        function toggleMic() {
-            micEnabled = !micEnabled;
-            localStream.getAudioTracks().forEach(track => {
-                track.enabled = micEnabled;
-            });
-            alert(micEnabled ? "ไมค์เปิด" : "ไมค์ปิด");
-        }
-
-        // Start the camera on button click
-        document.getElementById('startBtn').addEventListener('click', () => {
-            const selectedCameraId = document.getElementById('cameraSelect').value;
-            if (selectedCameraId) {
-                startCamera(selectedCameraId);
-            } else {
-                alert('กรุณาเลือกกล้องก่อน'); // Alert if no camera selected
+        function joinCall() {
+            const peerId = document.getElementById('peer-input').value;
+            const formattedId = formatPeerIDInput(peerId);
+            if (!isValidPeerID(formattedId)) {
+                alert("Invalid Peer ID format! Please use XXX-XXXX-XXX");
+                return;
             }
-        });
 
-        // Call another peer when the button is clicked
-        document.getElementById('callBtn').addEventListener('click', () => {
-            const peerId = prompt("Enter Peer ID to call:");
-            if (peerId) {
-                makeCall(peerId);
+            getUserMedia().then(stream => {
+                const call = peer.call(formattedId, stream);
+                call.on('stream', remoteStream => {
+                    addVideoStream(remoteStream, formattedId);
+                });
+            });
+        }
+
+        function addVideoStream(stream, id) {
+            if (document.getElementById(id)) return;
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.id = id;
+            video.autoplay = true;
+            videoGrid.appendChild(video);
+        }
+
+        function toggleAudio() {
+            isMuted = !isMuted;
+            localStream.getAudioTracks()[0].enabled = !isMuted;
+            alert(isMuted ? "Microphone is muted" : "Microphone is unmuted");
+        }
+
+        function toggleVideo() {
+            isCameraOff = !isCameraOff;
+            localStream.getVideoTracks()[0].enabled = !isCameraOff;
+            alert(isCameraOff ? "Camera is off" : "Camera is on");
+        }
+
+        function shareScreen() {
+            navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+                .then(screenStream => {
+                    addVideoStream(screenStream, 'screen');
+                    screenStream.getVideoTracks()[0].onended = () => {
+                        document.getElementById('screen').remove();
+                    };
+                });
+        }
+
+        function sendMessage(event) {
+            if (event.key === 'Enter') {
+                const message = document.getElementById('chatInput').value;
+                const chatDiv = document.getElementById('chatMessages');
+                chatDiv.innerHTML += `<div>${formatPeerID(peer.id)}: ${message}</div>`;
+                document.getElementById('chatInput').value = '';
             }
-        });
+        }
 
-        // Toggle camera and microphone
-        document.getElementById('toggleCameraBtn').addEventListener('click', toggleCamera);
-        document.getElementById('toggleMicBtn').addEventListener('click', toggleMic);
+        function openChat() {
+            document.getElementById('chat').style.display = 'block';
+        }
 
-        // Start the application
-        getCameras(); // Call the function to get cameras
-        initializePeer(); // Call the function to initialize PeerJS
+        function closeChat() {
+            document.getElementById('chat').style.display = 'none';
+        }
+
+        function leaveCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            videoGrid.innerHTML = '';
+            document.getElementById('peer-id').textContent = 'Disconnected';
+        }
+
+        function formatPeerID(id) {
+            return id.replace(/(.{3})/g, '$1-').slice(0, -1);
+        }
+
+        function formatPeerIDInput(id) {
+            return id.replace(/-/g, ''); // Remove dashes for processing
+        }
+
+        function isValidPeerID(id) {
+            const regex = /^[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{3}$/;
+            return regex.test(id);
+        }
     </script>
 </body>
 </html>
